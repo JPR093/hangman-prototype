@@ -115,50 +115,6 @@ impl TurnPertinentInfo<'_> {
     }
 }
 
-fn best_char(current_turn: &TurnPertinentInfo) -> char {
-    let capacity: usize = ('a'..='z').count();
-
-    // It counts in how many of the possible words, the char is in
-    // The more words it is in the better an idea it is to guess that one
-    // char in the next turn
-    let mut char_in_n_words: HashMap<char, usize> = HashMap::with_capacity(capacity);
-
-    for &ch in current_turn.unattempted_chars.iter() {
-        char_in_n_words.insert(ch, 0);
-    }
-
-    // this is to help keep track for each given word, which chars does it have
-    let mut char_is_in_given_word: HashMap<char, bool> = HashMap::with_capacity(capacity);
-
-    for &ch in current_turn.unattempted_chars.iter() {
-        char_is_in_given_word.insert(ch, false);
-    }
-    // This previous two hashmaps have the same keys
-
-    for word in current_turn.pertinent_words.iter() {
-        for ch in word.chars() {
-            if let Some(is_in_word) = char_is_in_given_word.get_mut(&ch) {
-                *is_in_word = true;
-            }
-        }
-        for (ch, count) in char_in_n_words.iter_mut() {
-            if *char_is_in_given_word.get(&ch).unwrap() {
-                //It's fine to unwrap because both hashmaps have the same keys
-                *count += 1
-            }
-        }
-        //reset for next word
-        char_is_in_given_word
-            .values_mut()
-            .for_each(|attempted| *attempted = false);
-    }
-
-    *char_in_n_words
-        .keys()
-        .max_by_key(|&ch| char_in_n_words.get(ch))
-        .unwrap()
-}
-
 // I need to update all the fields except for word
 fn next_turn(previous_turn: &mut TurnPertinentInfo) -> Result<()> {
     // If word has already been guessed shoot up an error
@@ -247,6 +203,50 @@ fn next_turn(previous_turn: &mut TurnPertinentInfo) -> Result<()> {
             }
         }
         discard
+    }
+
+    fn best_char(current_turn: &TurnPertinentInfo) -> char {
+        let capacity: usize = ('a'..='z').count();
+
+        // It counts in how many of the possible words, the char is in
+        // The more words it is in the better an idea it is to guess that one
+        // char in the next turn
+        let mut char_in_n_words: HashMap<char, usize> = HashMap::with_capacity(capacity);
+
+        for &ch in current_turn.unattempted_chars.iter() {
+            char_in_n_words.insert(ch, 0);
+        }
+
+        // this is to help keep track for each given word, which chars does it have
+        let mut char_is_in_given_word: HashMap<char, bool> = HashMap::with_capacity(capacity);
+
+        for &ch in current_turn.unattempted_chars.iter() {
+            char_is_in_given_word.insert(ch, false);
+        }
+        // This previous two hashmaps have the same keys
+
+        for word in current_turn.pertinent_words.iter() {
+            for ch in word.chars() {
+                if let Some(is_in_word) = char_is_in_given_word.get_mut(&ch) {
+                    *is_in_word = true;
+                }
+            }
+            for (ch, count) in char_in_n_words.iter_mut() {
+                if *char_is_in_given_word.get(ch).unwrap() {
+                    //It's fine to unwrap because both hashmaps have the same keys
+                    *count += 1
+                }
+            }
+            //reset for next word
+            char_is_in_given_word
+                .values_mut()
+                .for_each(|attempted| *attempted = false);
+        }
+
+        *char_in_n_words
+            .keys()
+            .max_by_key(|&ch| char_in_n_words.get(ch))
+            .unwrap()
     }
 
     Ok(())
