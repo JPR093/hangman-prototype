@@ -248,21 +248,3 @@ fn next_turn(previous_turn: &mut TurnPertinentInfo) -> Result<()> {
 
     Ok(())
 }
-
-
-
-
-
-
-
-
-
-
-// Maybe do this later 
-// impl Index<usize> for DictionaryDataV2 {
-//     type Output = &str;
-//     fn index(&self, index: usize) -> &Self::Output {
-//         &self.0[index]
-//     }
-// }
-// reccomendation by limepod
