@@ -1,23 +1,23 @@
+use anyhow::{anyhow, Ok, Result};
 use std::collections::HashMap;
-use anyhow::{Result, anyhow, Ok};
 
 fn main() {
     let dictionary_path = String::from("dictionary.txt");
-    let dictionary = 
-        DictionaryData::new_with_file_location(&dictionary_path)
-        .unwrap();
+    let dictionary = DictionaryData::new_with_file_location(&dictionary_path).unwrap();
     let word_to_guess = String::from("intrepidness");
-    let mut game = 
-        TurnPertinentInfo::new_with_dictionary_data_and_word(&dictionary, &word_to_guess)
-            .unwrap();
+    let mut game =
+        TurnPertinentInfo::new_with_dictionary_data_and_word(&dictionary, &word_to_guess).unwrap();
 
-    while game.turn < 30 && !game.word_clues.iter_mut().all(|possible_char| matches!(possible_char, Some(_)))  {
-        
+    while game.turn < 30
+        && !game
+            .word_clues
+            .iter_mut()
+            .all(|possible_char| matches!(possible_char, Some(_)))
+    {
         for i in 0..word_to_guess.len() {
             if let Some(ch) = game.word_clues[i] {
                 print!("{}", ch);
-            }
-            else {
+            } else {
                 print!("_");
             }
         }
@@ -27,13 +27,10 @@ fn main() {
     for i in 0..word_to_guess.len() {
         if let Some(ch) = game.word_clues[i] {
             print!("{}", ch);
-        }
-        else {
+        } else {
             print!("_");
         }
     }
-
-    
 }
 
 // Each Vec<String> holds the strings of a given length
@@ -49,11 +46,12 @@ impl DictionaryData {
             for index in 0..dictionary.len() {
                 // Here chech that everything in a given line is ascii lowercase
                 // Each given line will be a word in my dictionary if this is true(and the next condition)
-                if dictionary[index]
-                .chars()
-                .any(|ch| !ch.is_ascii_lowercase())
-                {
-                    return Err(anyhow!("Word: {} at index: {} is not ascii lowercase", dictionary[index], index));
+                if dictionary[index].chars().any(|ch| !ch.is_ascii_lowercase()) {
+                    return Err(anyhow!(
+                        "Word: {} at index: {} is not ascii lowercase",
+                        dictionary[index],
+                        index
+                    ));
                 }
                 // Doing bounds validation for later use in this same function
                 if dictionary[index].len() > 50 {
@@ -64,8 +62,7 @@ impl DictionaryData {
         let mut dict_data = DictionaryData(std::array::from_fn(|_| vec![]));
 
         for word in dictionary.lines() {
-            dict_data.0[word.len() - 1]
-                .push(word.to_owned())
+            dict_data.0[word.len() - 1].push(word.to_owned())
         }
 
         Ok(dict_data)
@@ -92,7 +89,10 @@ struct TurnPertinentInfo<'a> {
 }
 
 impl TurnPertinentInfo<'_> {
-    fn new_with_dictionary_data_and_word<'a>(dict_data: &'a DictionaryData, word: &str) -> Result<TurnPertinentInfo<'a>> {
+    fn new_with_dictionary_data_and_word<'a>(
+        dict_data: &'a DictionaryData,
+        word: &str,
+    ) -> Result<TurnPertinentInfo<'a>> {
         // Will only care for the parts of the dictionary that have the words that correspond to the length
         // of my desired word
         let pertinent_words = dict_data.0[word.len() - 1]
@@ -110,15 +110,14 @@ impl TurnPertinentInfo<'_> {
             word: word.chars().collect(),
             unattempted_chars: ('a'..='z').collect::<Vec<char>>(),
             word_clues: vec![None; word.len()],
-            pertinent_words
+            pertinent_words,
         })
     }
 }
 
 fn best_char(current_turn: &TurnPertinentInfo) -> char {
-
     let capacity: usize = ('a'..='z').count();
-    
+
     // It counts in how many of the possible words, the char is in
     // The more words it is in the better an idea it is to guess that one
     // char in the next turn
@@ -142,15 +141,16 @@ fn best_char(current_turn: &TurnPertinentInfo) -> char {
                 *is_in_word = true;
             }
         }
-        for (ch,count) in char_in_n_words.iter_mut() {
-            if *char_is_in_given_word.get(&ch).unwrap() { //It's fine to unwrap because both hashmaps have the same keys
+        for (ch, count) in char_in_n_words.iter_mut() {
+            if *char_is_in_given_word.get(&ch).unwrap() {
+                //It's fine to unwrap because both hashmaps have the same keys
                 *count += 1
             }
         }
         //reset for next word
         char_is_in_given_word
             .values_mut()
-            .for_each(|attempted | *attempted = false);
+            .for_each(|attempted| *attempted = false);
     }
 
     *char_in_n_words
@@ -161,15 +161,14 @@ fn best_char(current_turn: &TurnPertinentInfo) -> char {
 
 // I need to update all the fields except for word
 fn next_turn(previous_turn: &mut TurnPertinentInfo) -> Result<()> {
-
     // If word has already been guessed shoot up an error
-    if previous_turn.word_clues
+    if previous_turn
+        .word_clues
         .iter_mut()
-        .all(|possible_char| matches!(possible_char, Some(_))) 
+        .all(|possible_char| matches!(possible_char, Some(_)))
     {
         return Err(anyhow!("Word has already been guessed bonobo"));
     }
-
 
     // all words in this context(this function) have the same length
     let word_len = previous_turn.word.len();
@@ -208,12 +207,15 @@ fn next_turn(previous_turn: &mut TurnPertinentInfo) -> Result<()> {
         // pertinent words updated here
         let mut word_index = 0;
         while word_index < previous_turn.pertinent_words.len() {
-            if should_be_discarded(&previous_turn.pertinent_words[word_index], &new_info, char_to_guess)
-                .unwrap()
+            if should_be_discarded(
+                &previous_turn.pertinent_words[word_index],
+                &new_info,
+                char_to_guess,
+            )
+            .unwrap()
             {
                 previous_turn.pertinent_words.swap_remove(word_index);
-            }
-            else {
+            } else {
                 word_index += 1;
             }
         }
@@ -227,15 +229,16 @@ fn next_turn(previous_turn: &mut TurnPertinentInfo) -> Result<()> {
             return Err(anyhow!("Call me with sensical arguments bonobo"));
         }
 
-        if chars_changed.iter().any(|&char_changed| char_changed) { //guess sucessful
+        if chars_changed.iter().any(|&char_changed| char_changed) {
+            //guess sucessful
             for i in 0..chars_changed.len() {
                 if chars_changed[i] && word.chars().nth(i).unwrap() != char_guessed {
                     discard = Ok(true);
                     break;
                 }
             }
-        }
-        else { //guess not succesful
+        } else {
+            //guess not succesful
             for ch in word.chars() {
                 if ch == char_guessed {
                     discard = Ok(true);
