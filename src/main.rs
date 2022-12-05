@@ -1,36 +1,22 @@
 use anyhow::{anyhow, Ok, Result};
 use std::collections::HashMap;
 
-fn main() {
+fn main() -> Result<()> {
     let dictionary_path = String::from("dictionary.txt");
-    let dictionary = DictionaryData::new_with_file_location(&dictionary_path).unwrap();
+    let dictionary = DictionaryData::new_with_file_location(&dictionary_path)?;
     let word_to_guess = String::from("intrepidness");
     let mut game =
-        TurnPertinentInfo::new_with_dictionary_data_and_word(&dictionary, &word_to_guess).unwrap();
+        TurnPertinentInfo::new_with_dictionary_data_and_word(&dictionary, &word_to_guess)?;
 
-    while game.turn < 30
-        && !game
-            .word_clues
-            .iter_mut()
-            .all(|possible_char| matches!(possible_char, Some(_)))
-    {
-        for i in 0..word_to_guess.len() {
-            if let Some(ch) = game.word_clues[i] {
-                print!("{}", ch);
-            } else {
-                print!("_");
-            }
-        }
-        println!("");
-        next_turn(&mut game).unwrap()
+    while game.word_clues.iter_mut().any(|ch| ch.is_none()) {
+        game.next_turn().unwrap();
+        game.pretty_print_short();
     }
-    for i in 0..word_to_guess.len() {
-        if let Some(ch) = game.word_clues[i] {
-            print!("{}", ch);
-        } else {
-            print!("_");
-        }
-    }
+
+    println!();
+    game.next_turn().unwrap();
+
+    Ok(())
 }
 
 // Each Vec<String> holds the strings of a given length
@@ -43,19 +29,19 @@ impl DictionaryData {
         {
             // Doing some semblance of data validation here
             let dictionary = dictionary.lines().collect::<Vec<&str>>();
-            for index in 0..dictionary.len() {
+            for (i, item) in dictionary.iter().enumerate() {
                 // Here chech that everything in a given line is ascii lowercase
                 // Each given line will be a word in my dictionary if this is true(and the next condition)
-                if dictionary[index].chars().any(|ch| !ch.is_ascii_lowercase()) {
+                if item.chars().any(|ch| !ch.is_ascii_lowercase()) {
                     return Err(anyhow!(
                         "Word: {} at index: {} is not ascii lowercase",
-                        dictionary[index],
-                        index
+                        item,
+                        i
                     ));
                 }
                 // Doing bounds validation for later use in this same function
-                if dictionary[index].len() > 50 {
-                    return Err(anyhow!("Word: {} at index: {} is more than 50 characters long, we don't do that here", dictionary[index], index));
+                if item.len() > 50 {
+                    return Err(anyhow!("Word: {} at index: {} is more than 50 characters long, we don't do that here", item, i));
                 }
             }
         }
@@ -113,141 +99,146 @@ impl TurnPertinentInfo<'_> {
             pertinent_words,
         })
     }
-}
 
-// I need to update all the fields except for word
-fn next_turn(previous_turn: &mut TurnPertinentInfo) -> Result<()> {
-    // If word has already been guessed shoot up an error
-    if previous_turn
-        .word_clues
-        .iter_mut()
-        .all(|possible_char| matches!(possible_char, Some(_)))
-    {
-        return Err(anyhow!("Word has already been guessed bonobo"));
-    }
-
-    // all words in this context(this function) have the same length
-    let word_len = previous_turn.word.len();
-    // turn updated here
-    previous_turn.turn += 1;
-
-    let char_to_guess = best_char(previous_turn);
-
-    // unattempted chars updated here
-    for i in 0..previous_turn.unattempted_chars.len() {
-        if previous_turn.unattempted_chars[i] == char_to_guess {
-            previous_turn.unattempted_chars.swap_remove(i);
-            break;
+    // I need to update all the fields except for word
+    fn next_turn(&mut self) -> Result<()> {
+        // If word has already been guessed shoot up an error
+        if self
+            .word_clues
+            .iter_mut()
+            .all(|possible_char| matches!(possible_char, Some(_)))
+        {
+            return Err(anyhow!("Word has already been guessed bonobo"));
         }
-    }
 
-    // changes to true if we now know the char at the given word char spot
-    let new_info = {
-        let mut new_info = vec![false; word_len];
-        // word_clues updated here
-        for i in 0..word_len {
-            if previous_turn.word[i] == char_to_guess {
-                previous_turn.word_clues[i] = Some(char_to_guess);
-                new_info[i] = true;
+        // all words in this context(this function) have the same length
+        let word_len = self.word.len();
+        // turn updated here
+        self.turn += 1;
+
+        let char_to_guess = best_char(self);
+
+        // unattempted chars updated here
+        self.unattempted_chars.swap_remove(
+            self.unattempted_chars
+                .iter()
+                .position(|ch| *ch == char_to_guess)
+                .ok_or_else(|| anyhow!("Something broke"))?,
+        );
+
+        // changes to true if we now know the char at the given word char spot
+        let new_info = {
+            let mut new_info = vec![false; word_len];
+            // word_clues updated here
+            for (i, item) in new_info.iter_mut().enumerate() {
+                if self.word[i] == char_to_guess {
+                    self.word_clues[i] = Some(char_to_guess);
+                    *item = true;
+                }
+            }
+            new_info
+        };
+
+        // amount of failed attempts updated here
+        if !new_info.iter().any(|&char_changed| char_changed) {
+            self.failed_attempts += 1;
+        }
+
+        {
+            // pertinent words updated here
+            let mut word_index = 0;
+            while word_index < self.pertinent_words.len() {
+                if should_be_discarded(self.pertinent_words[word_index], &new_info, char_to_guess) {
+                    self.pertinent_words.swap_remove(word_index);
+                } else {
+                    word_index += 1;
+                }
             }
         }
-        new_info
-    };
 
-    // amount of failed attempts updated here
-    if new_info.iter().any(|&char_changed| char_changed) {
-        previous_turn.failed_attempts += 1;
-    }
+        fn should_be_discarded(word: &str, chars_changed: &[bool], char_guessed: char) -> bool {
+            // should call with word.len() == char_changed.len(), otherwise may crash
 
-    {
-        // pertinent words updated here
-        let mut word_index = 0;
-        while word_index < previous_turn.pertinent_words.len() {
-            if should_be_discarded(
-                &previous_turn.pertinent_words[word_index],
-                &new_info,
-                char_to_guess,
-            )
-            .unwrap()
-            {
-                previous_turn.pertinent_words.swap_remove(word_index);
+            let mut discard = false;
+
+            if chars_changed.iter().any(|&char_changed| char_changed) {
+                //guess sucessful
+                for (i, item) in chars_changed.iter().enumerate() {
+                    if *item && word.chars().nth(i).unwrap() != char_guessed {
+                        discard = true;
+                        break;
+                    }
+                }
             } else {
-                word_index += 1;
+                //guess not succesful
+                for ch in word.chars() {
+                    if ch == char_guessed {
+                        discard = true;
+                        break;
+                    }
+                }
             }
+            discard
         }
+
+        fn best_char(current_turn: &TurnPertinentInfo) -> char {
+            let capacity: usize = ('a'..='z').count();
+
+            // It counts in how many of the possible words, the char is in
+            // The more words it is in the better an idea it is to guess that one
+            // char in the next turn
+            let mut char_in_n_words: HashMap<char, usize> = HashMap::with_capacity(capacity);
+
+            for &ch in current_turn.unattempted_chars.iter() {
+                char_in_n_words.insert(ch, 0);
+            }
+
+            // this is to help keep track for each given word, which chars does it have
+            let mut char_is_in_given_word: HashMap<char, bool> = HashMap::with_capacity(capacity);
+
+            for &ch in current_turn.unattempted_chars.iter() {
+                char_is_in_given_word.insert(ch, false);
+            }
+            // This previous two hashmaps have the same keys
+
+            for word in current_turn.pertinent_words.iter() {
+                for ch in word.chars() {
+                    if let Some(is_in_word) = char_is_in_given_word.get_mut(&ch) {
+                        *is_in_word = true;
+                    }
+                }
+                for (ch, count) in char_in_n_words.iter_mut() {
+                    if *char_is_in_given_word.get(ch).unwrap() {
+                        //It's fine to unwrap because both hashmaps have the same keys
+                        *count += 1
+                    }
+                }
+                //reset for next word
+                char_is_in_given_word
+                    .values_mut()
+                    .for_each(|attempted| *attempted = false);
+            }
+
+            *char_in_n_words
+                .keys()
+                .max_by_key(|&ch| char_in_n_words.get(ch))
+                .unwrap()
+        }
+
+        Ok(())
     }
 
-    fn should_be_discarded(word: &str, chars_changed: &[bool], char_guessed: char) -> Result<bool> {
-        let mut discard = Ok(false);
-
-        // data validation that is unnecessary in the usecase
-        if word.len() != chars_changed.len() {
-            return Err(anyhow!("Call me with sensical arguments bonobo"));
-        }
-
-        if chars_changed.iter().any(|&char_changed| char_changed) {
-            //guess sucessful
-            for i in 0..chars_changed.len() {
-                if chars_changed[i] && word.chars().nth(i).unwrap() != char_guessed {
-                    discard = Ok(true);
-                    break;
-                }
-            }
-        } else {
-            //guess not succesful
-            for ch in word.chars() {
-                if ch == char_guessed {
-                    discard = Ok(true);
-                    break;
-                }
+    fn pretty_print_short(&self) {
+        println!("Turn: {}", self.turn);
+        println!("Failed attempts: {}", self.failed_attempts);
+        print!("Current word knowledge: ");
+        for maybe_ch in &self.word_clues {
+            if let Some(ch) = maybe_ch {
+                print!("{}", ch);
+            } else {
+                print!("?");
             }
         }
-        discard
+        println!();
     }
-
-    fn best_char(current_turn: &TurnPertinentInfo) -> char {
-        let capacity: usize = ('a'..='z').count();
-
-        // It counts in how many of the possible words, the char is in
-        // The more words it is in the better an idea it is to guess that one
-        // char in the next turn
-        let mut char_in_n_words: HashMap<char, usize> = HashMap::with_capacity(capacity);
-
-        for &ch in current_turn.unattempted_chars.iter() {
-            char_in_n_words.insert(ch, 0);
-        }
-
-        // this is to help keep track for each given word, which chars does it have
-        let mut char_is_in_given_word: HashMap<char, bool> = HashMap::with_capacity(capacity);
-
-        for &ch in current_turn.unattempted_chars.iter() {
-            char_is_in_given_word.insert(ch, false);
-        }
-        // This previous two hashmaps have the same keys
-
-        for word in current_turn.pertinent_words.iter() {
-            for ch in word.chars() {
-                if let Some(is_in_word) = char_is_in_given_word.get_mut(&ch) {
-                    *is_in_word = true;
-                }
-            }
-            for (ch, count) in char_in_n_words.iter_mut() {
-                if *char_is_in_given_word.get(ch).unwrap() {
-                    //It's fine to unwrap because both hashmaps have the same keys
-                    *count += 1
-                }
-            }
-            //reset for next word
-            char_is_in_given_word
-                .values_mut()
-                .for_each(|attempted| *attempted = false);
-        }
-
-        *char_in_n_words
-            .keys()
-            .max_by_key(|&ch| char_in_n_words.get(ch))
-            .unwrap()
-    }
-
-    Ok(())
 }
