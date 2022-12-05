@@ -8,13 +8,10 @@ fn main() -> Result<()> {
     let mut game =
         TurnPertinentInfo::new_with_dictionary_data_and_word(&dictionary, &word_to_guess)?;
 
-    while game.word_clues.iter_mut().any(|ch| ch.is_none()) {
-        game.next_turn().unwrap();
+    while game.word_clues.iter().any(|ch| ch.is_none()) {
+        game.next_turn()?;
         game.pretty_print_short();
     }
-
-    println!();
-    game.next_turn().unwrap();
 
     Ok(())
 }
@@ -105,8 +102,8 @@ impl TurnPertinentInfo<'_> {
         // If word has already been guessed shoot up an error
         if self
             .word_clues
-            .iter_mut()
-            .all(|possible_char| matches!(possible_char, Some(_)))
+            .iter()
+            .all(|possible_char| possible_char.is_some())
         {
             return Err(anyhow!("Word has already been guessed bonobo"));
         }
